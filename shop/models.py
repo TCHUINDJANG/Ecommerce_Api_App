@@ -67,9 +67,9 @@ class Product(TimestampModel):
     def current_price(self):
         return self.discount_price if self.discount_price else self.price
     
-    @property
-    def review_count(self):
-        return self.review_count()
+    # @property
+    # def review_count(self):
+    #     return self.review_count()
     
 
 
