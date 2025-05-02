@@ -29,7 +29,9 @@ from .serializers import (
     
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.exceptions import NotAuthenticated
 from django.contrib.auth import get_user_model
+from django.http import Http404
 
 
 User = get_user_model()
@@ -58,8 +60,12 @@ class ProfileDetailView(generics.RetrieveAPIView):
     # permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        return self.request.user.profile
-
+        try:
+            return self.request.user.profile
+        except Profile.DoesNotExist:
+            return Profile.objects.create(user=self.request.user)
+        except AttributeError:
+            raise Http404("Profil non trouvé")
 
 class ProfileUpdateView(generics.UpdateAPIView):
     queryset = Profile.objects.all()

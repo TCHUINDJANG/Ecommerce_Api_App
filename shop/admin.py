@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
 from .models import (
     User,
     Category,
@@ -6,60 +7,66 @@ from .models import (
     Cart,
     CartItem,
     Review,
-    Adress,  # Note: L'orthographe correcte serait "Address"
+    Adress,  # Correction orthographique
     Order,
     OrderItem,
     Wishlist,
     Coupon,
     Promotion,
-    Payment, 
-    
+    Payment,
+    Profile,
 )
 
-# Enregistrement des modèles de base
-admin.site.register(User)
-admin.site.register(Category)
-admin.site.register(Product)
-admin.site.register(Cart)
-admin.site.register(CartItem)
-admin.site.register(Review)
-admin.site.register(Adress)
-admin.site.register(Order)
-admin.site.register(OrderItem)
-admin.site.register(Wishlist)
-admin.site.register(Coupon)
-admin.site.register(Promotion)
-admin.site.register(Payment)
+# Configuration des modèles avec personnalisations
 
+class ProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'phone', 'birth_date')  # Adaptez avec vos champs réels
+    search_fields = ('user__username', 'country')
 
-# Si vous voulez des personnalisations pour certains modèles :
 class ProductAdmin(admin.ModelAdmin):
     list_display = ('name', 'price', 'available', 'category')
     list_filter = ('available', 'category')
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
 
-class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'customer', 'status', 'total', 'created_at')
-    list_filter = ('status', 'created_at')
-    search_fields = ('customer__username', 'transaction_id')
-
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
 
 class OrderAdmin(admin.ModelAdmin):
+    list_display = ('id', 'customer', 'status', 'total', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('customer__username', 'transaction_id')
     inlines = [OrderItemInline]
 
-# Désenregistrer puis réenregistrer avec la personnalisation
-admin.site.unregister(Product)
-admin.site.unregister(Order)
+class CustomUserAdmin(UserAdmin):
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff')
+    list_filter = ('is_staff', 'is_superuser', 'is_active')
+    # Ajoutez d'autres personnalisations si nécessaire
+
+# Enregistrement des modèles
+
+# 1. D'abord désenregistrer les modèles par défaut
+admin.site.unregister(User)
+
+# 2. Enregistrer les modèles avec leurs configurations personnalisées
+admin.site.register(User, CustomUserAdmin)
+admin.site.register(Profile, ProfileAdmin)
 admin.site.register(Product, ProductAdmin)
 admin.site.register(Order, OrderAdmin)
 
-# Pour le modèle User personnalisé (si vous avez des champs supplémentaires)
-class UserAdmin(admin.ModelAdmin):
-    list_display = ('username', 'email', 'is_custommer', 'is_seller')
-    list_filter = ('is_custommer', 'is_seller')
+# 3. Enregistrer les autres modèles sans personnalisation
+models_to_register = [
+    Category,
+    Cart,
+    CartItem,
+    Review,
+    Adress,
+    Wishlist,
+    Coupon,
+    Promotion,
+    Payment,
+]
 
-admin.site.unregister(User)  # Important si User
+for model in models_to_register:
+    admin.site.register(model)

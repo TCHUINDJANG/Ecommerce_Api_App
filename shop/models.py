@@ -3,16 +3,16 @@ from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator , MaxValueValidator
 from django.contrib.auth.models import AbstractBaseUser
 from uuid import UUID
-from django.db.models.signals import post_save
-from django.dispatch import receiver
+from django.contrib.auth.models import User
+
 
 
 User = get_user_model()
 
 
-class User (AbstractBaseUser):
-    is_custommer = models.BooleanField(default=False)
-    is_seller = models.BooleanField(default=False)
+# class User (AbstractBaseUser):
+#     is_custommer = models.BooleanField(default=False)
+#     is_seller = models.BooleanField(default=False)
 
 
 class TimestampModel(models.Model):
@@ -324,14 +324,4 @@ class Profile(models.Model):
     
 
 
-    # Crée un profil automatiquement à la création d'un User
-@receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    if created:
-        Profile.objects.create(user=instance)
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    instance.profile.save()
-
-
+ 
