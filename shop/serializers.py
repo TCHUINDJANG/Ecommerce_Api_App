@@ -67,7 +67,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ["phone", "address", "city", "country", "postal_code", "birth_date", "profile_picture"]
+        fields = ["phone", "address", "city"  , "country", "postal_code", "birth_date", "profile_picture"]
+        read_only_fields = [ "created_at", "updated_at"]
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -155,7 +156,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = [
-            'id' , 'user' , 'crestad_at' , 'updated_at'
+            'id' , 'user' , 'created_at' , 'updated_at'
         ]
 
         def validate_rating(self , value):
@@ -164,6 +165,12 @@ class ReviewSerializer(serializers.ModelSerializer):
                     "La note doit etre comprise entre 1 et 5"
                 )
             return value
+        
+
+        def validate(self, data):
+             if not data.get('comment') and data.get('rating') < 3:
+                raise serializers.ValidationError("Un commentaire est obligatoire pour les notes inférieures à 3.")
+             return data
         
         def validate(self , data):
             user = self.context['request'].user

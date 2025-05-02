@@ -206,23 +206,27 @@ class ReviewList(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Review.objects.all()
-        product_id = self.request.query_params.get('product_id')
+        product = self.request.query_params.get('product')
 
-        if product_id:
-            queryset = queryset.filter(product_id=product_id)
+        if product:
+            queryset = queryset.filter(product=product)
 
         return queryset
     
 
     def perform_create(self, serializer):
-        product_id = self.request.data.get('product_id')
-        if not product_id:
-            raise serializers.ValidationError({"product_id": "This field is required."})
+        product_id = self.request.data.get('product')
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            raise serializers.ValidationError({"product": "Produit introuvable"})
         
         serializer.save(
-            user=self.request.user,
-            product_id=product_id
+            user = self.request.user,
+            product=product
         )
+        
+        
 
 
 class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
