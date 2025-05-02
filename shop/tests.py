@@ -88,6 +88,24 @@ class AuthTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
 
+############################# TESTS PROFILE #####################################################################
+
+class ProfileTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="testuser", password="12345")
+        self.client.login(username="testuser", password="12345")
+
+    def test_profile_detail(self):
+        url = reverse("profile-detail")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_profile_update(self):
+        url = reverse("profile-update")
+        data = {"phone": "+123456789", "city": "Paris"}
+        response = self.client.patch(url, data)
+        self.assertEqual(response.status_code, 200)
+
 
 
  

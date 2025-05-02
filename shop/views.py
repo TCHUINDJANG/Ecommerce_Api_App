@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Category, Product, Order, OrderItem, Review , Adress , Cart , CartItem
 from .serializers import (CategorySerializer, ProductSerializer, CartSerializer,
-                         OrderSerializer,AdressSerializer, ReviewSerializer, OrderItemSerializer ,UserSerializer)
+                         OrderSerializer,AdressSerializer, ProfileUpdateSerializer , ReviewSerializer, OrderItemSerializer ,UserSerializer)
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
@@ -11,7 +11,7 @@ from .permissions import IsOwnerOrReadOnly   , IsProductOwner
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Promotion, Payment, Coupon
+from .models import Promotion, Payment, Coupon , Profile
 from rest_framework import viewsets
 from rest_framework.decorators import action
 # import stripe
@@ -22,11 +22,10 @@ from .filters import ProductFilter
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ModelViewSet , GenericViewSet
 from rest_framework.mixins import CreateModelMixin , RetrieveModelMixin
-from .serializers import PromotionSerializer, PaymentSerializer, CouponSerializer, ApplyCouponSerializer , AdressSerializer
+from .serializers import PromotionSerializer, PaymentSerializer,ProfileSerializer, CouponSerializer, ApplyCouponSerializer , AdressSerializer
 from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSerializer,
-    UserProfileSerializer , 
     
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -47,14 +46,28 @@ class UserRegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
 
-class UserProfileView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = UserProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
+# class UserProfileView(generics.RetrieveUpdateDestroyAPIView):
+#     serializer_class = UserProfileSerializer
+    # permission_classes = [permissions.IsAuthenticated]
     
 
 
+class ProfileDetailView(generics.RetrieveAPIView):
+    queryset = Profile.objects.all()
+    serializer_class = ProfileSerializer
+    # permission_classes = [permissions.IsAuthenticated]
+
     def get_object(self):
-        return self.request.user
+        return self.request.user.profile
+
+
+class ProfileUpdateView(generics.UpdateAPIView):
+    queryset = Profile.objects.all()
+    serializer_class = ProfileUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user.profile
     
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -82,7 +95,7 @@ class CategoryList(generics.ListCreateAPIView):
     serializer_class = CategorySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name']
-    permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated]
 
 class CategoryDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
@@ -106,7 +119,7 @@ class ProductList(generics.ListCreateAPIView):
 class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticated  , IsProductOwner]
+    # permission_classes = [permissions.IsAuthenticated  , IsProductOwner]
 
 class ReviewCreate(generics.CreateAPIView):
     serializer_class = ReviewSerializer
@@ -223,7 +236,7 @@ class PromotionList(generics.ListCreateAPIView):
 
     # queryset = Promotion.objects.filter(end_date__gte=timezone.now())
     serializer_class = PromotionSerializer
-    permission_classes = [permissions.IsAdminUser]
+    # permission_classes = [permissions.IsAdminUser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['discount_type']
     search_fields = ['name', 'code']
@@ -243,7 +256,7 @@ class PromotionList(generics.ListCreateAPIView):
 class PromotionDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Promotion.objects.all()
     serializer_class = PromotionSerializer
-    permission_classes = [permissions.IsAdminUser]
+    # permission_classes = [permissions.IsAdminUser]
 
 class PaymentList(generics.ListCreateAPIView):
     serializer_class = PaymentSerializer

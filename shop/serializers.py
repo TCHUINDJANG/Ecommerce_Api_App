@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Category , Product ,Cart , CartItem,  Review ,Adress, Order , OrderItem , Wishlist , Coupon , Promotion , Payment
+    Category , Product ,Cart , Profile , CartItem,  Review ,Adress, Order , OrderItem , Wishlist , Coupon , Promotion , Payment
 )
 
 from django.contrib.auth import get_user_model
@@ -46,17 +46,34 @@ class UserSerializer(serializers.ModelSerializer):
         return user
     
 
-class UserProfileSerializer(serializers.ModelSerializer):
+# class UserProfileSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model=User
+#         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'date_joined')
+#         read_only_fields = ('id', 'date_joined')
+
+
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer()
+
     class Meta:
-        model=User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'date_joined')
-        read_only_fields = ('id', 'date_joined')
+        model = Profile
+        fields = "__all__"
+        read_only_fields = ["user", "created_at", "updated_at"]
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ["phone", "address", "city", "country", "postal_code", "birth_date", "profile_picture"]
 
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ['id' , 'name' , 'slug' , 'description' , 'image' , 'is_active']
+        fields = '__all__'
         read_only_fields = ['id' , 'slug']
         extra_kwargs = {
             'name': {

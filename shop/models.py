@@ -3,6 +3,8 @@ from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator , MaxValueValidator
 from django.contrib.auth.models import AbstractBaseUser
 from uuid import UUID
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 User = get_user_model()
@@ -67,9 +69,9 @@ class Product(TimestampModel):
     def current_price(self):
         return self.discount_price if self.discount_price else self.price
     
-    @property
-    def review_count(self):
-        return self.review_count()
+    # @property
+    # def review_count(self):
+    #     return self.review_count()
     
 
 
@@ -301,5 +303,35 @@ class CartItem(models.Model):
     cart = models.ForeignKey(Cart , on_delete=models.CASCADE , blank=True , null=True)
     product = models.ForeignKey(Product , on_delete=models.CASCADE , blank=True , null=True, related_name='cartitems')
     quantity = models.IntegerField(default=0)
+
+
+
+
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=20, blank=True, null=True)
+    birth_date = models.DateField(blank=True, null=True)
+    profile_picture = models.ImageField(upload_to="profile_pics/", blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Profile de {self.user.username}"
+    
+
+
+    # Crée un profil automatiquement à la création d'un User
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    instance.profile.save()
 
 

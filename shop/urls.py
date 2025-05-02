@@ -4,11 +4,11 @@ from rest_framework import routers
 from . import views
 from rest_framework.urlpatterns import format_suffix_patterns
 from rest_framework.routers import DefaultRouter
+from .views import ProfileDetailView, ProfileUpdateView
 from .views import CartViewSet, PayementViewSet
 from .views import (
     CustomTokenObtainPairView,
     UserRegisterView,
-    UserProfileView,
     LogoutView,
     
     
@@ -37,10 +37,12 @@ urlpatterns = [
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/register/', UserRegisterView.as_view(), name='user_register'),
-    path('auth/me/', UserProfileView.as_view(), name='user_profile'),
+    # path('auth/me/', UserProfileView.as_view(), name='user_profile'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('users/' , views.UserList.as_view() , name='user-list'),
     path('users/<int:pk>/' , views.UserDetail.as_view() , name='user-detail'),
+    path("profile/", ProfileDetailView.as_view(), name="profile-detail"),
+    path("profile/update/", ProfileUpdateView.as_view(), name="profile-update"),
 
 
 
