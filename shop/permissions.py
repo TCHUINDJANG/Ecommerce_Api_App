@@ -29,3 +29,8 @@ class IsProductOwner(permissions.BasePermission):
 class IsProfileOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         return obj.user == request.user
+    
+
+class IsCartOwner(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return obj.user == request.user

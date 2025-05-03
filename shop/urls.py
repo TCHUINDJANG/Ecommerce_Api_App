@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
 from . import views
+from .views import CartCreateView
 from rest_framework.urlpatterns import format_suffix_patterns
 from rest_framework.routers import DefaultRouter
 from .views import ProfileDetailView, ProfileUpdateView
@@ -26,7 +27,7 @@ from rest_framework_simplejwt.views import(
 router = DefaultRouter()
 
 
-router.register(r'carts', CartViewSet, basename='cart')
+# router.register(r'carts', CartViewSet, basename='cart')
 router.register(r'payments', PayementViewSet, basename='payment')
 
 
@@ -55,6 +56,8 @@ urlpatterns = [
     path('products/<int:pk>/', views.ProductDetail.as_view(), name='product-detail'),
     path('reviews/', views.ReviewList.as_view(), name='reviews-list'),
     path('reviews/<int:pk>/', views.ReviewDetail.as_view(), name='reviews-detail'), 
+    path('cart/', views.CartViewSet.as_view(), name='cart-list'),
+    path('create-cart/', CartCreateView.as_view(), name='create-cart'),
 
             # 3 Panier d'achat 
 

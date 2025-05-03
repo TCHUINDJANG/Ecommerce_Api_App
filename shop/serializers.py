@@ -378,25 +378,47 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(many=False)
+    product = serializers.IntegerField()
     sub_total = serializers.SerializerMethodField(method_name="total")
    
     class Meta:
         model = CartItem
-        fields = ["id" , "cart" , "product" , "quantity" , "sub_total"]
+        fields = [ 'product' , 'quantity' , 'sub_total']
 
 
     def total(self, cartItems: CartItem):
-        return CartItem.quantity * CartItem.product.price
+        return cartItems.quantity * cartItems.product.price
 
 
 
 
 class CartSerializer(serializers.ModelSerializer):
-    items = CartItemSerializer(many=True)
+    items = CartItemSerializer(many=True , write_only=True)
     class Meta:
         model = Cart
-        fields = ["id"]
+        fields = ['id' , 'created' , 'items']
+
+
+    def create(self , validated_data):
+        items_data = validated_data.pop("items" , [])
+        cart = Cart.objects.create()
+        for item_data in items_data:
+            try:
+                CartItem.objects.create(
+                    cart=cart,
+                    product_id=item_data.get('product_id'),  # Utilisez .get() avec valeur par défaut
+                    quantity=int(item_data.get('quantity', 1))  # Valeur par défaut 1
+                )
+            except (TypeError, ValueError) as e:
+                raise serializers.ValidationError({
+                    'error': f"Données d'item invalides: {str(e)}"
+                })
+        
+        return cart
+
+
+
+
 
 
 

@@ -4,6 +4,7 @@ from django.core.validators import MinValueValidator , MaxValueValidator
 from django.contrib.auth.models import AbstractBaseUser
 from uuid import UUID
 from django.contrib.auth.models import User
+import uuid
 
 
 
@@ -292,17 +293,18 @@ class Payment(models.Model):
 
 
 class Cart(models.Model):
-    id = models.UUIDField(default=UUID , editable=False , primary_key=True)
+    id = models.UUIDField(default=uuid.uuid4,  editable=False , primary_key=True)
     created =models.DateTimeField(auto_now_add=True)
 
+
     def __str__(self):
-        return str(self.card_id)
+        return str(self.id)
     
 
 class CartItem(models.Model):
-    cart = models.ForeignKey(Cart , on_delete=models.CASCADE , blank=True , null=True)
+    cart = models.ForeignKey(Cart ,  related_name='items' , on_delete=models.CASCADE , blank=True , null=True)
     product = models.ForeignKey(Product , on_delete=models.CASCADE , blank=True , null=True, related_name='cartitems')
-    quantity = models.IntegerField(default=0)
+    quantity = models.IntegerField(default=1)
 
 
 

@@ -32,6 +32,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.exceptions import NotAuthenticated
 from django.contrib.auth import get_user_model
 from django.http import Http404
+from .permissions import IsCartOwner
 
 
 User = get_user_model()
@@ -103,6 +104,10 @@ class CategoryList(generics.ListCreateAPIView):
     search_fields = ['name']
     # permission_classes = [permissions.IsAuthenticated]
 
+
+
+
+
 class CategoryDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -147,6 +152,32 @@ class OrderListCreate(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+class CartViewSet(generics.ListCreateAPIView):
+    queryset = Cart.objects.all()
+    serializer_class = CartSerializer
+    permission_classes = [permissions.IsAuthenticated , IsCartOwner]
+
+
+
+class CartCreateView(APIView):
+    def post(self, request):
+        if 'items' not in request.data:
+            return Response(
+                {"error": "La clé 'items' est requise"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        serializer = CartSerializer(data=request.data)
+        if serializer.is_valid():
+            cart = serializer.save()
+            return Response(CartSerializer(cart).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+   
+        
 
 class UserCreate(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -416,10 +447,6 @@ class PayementViewSet(viewsets.ModelViewSet):
             )
         
 
-class CartViewSet(viewsets.ModelViewSet):
-    queryset = Cart.objects.all()
-    serializer_class = CartSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
 
 
