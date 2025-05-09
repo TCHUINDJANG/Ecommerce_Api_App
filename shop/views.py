@@ -2,7 +2,7 @@ from rest_framework import generics, permissions, status , filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 import stripe.error
-from .models import Category, Product, Order, OrderItem, Review , Adress , Cart , CartItem
+from .models import Category, Product, Order, OrderItem, Review , Adress , Cart , CartItem , ContactMessage
 from .serializers import (CategorySerializer, ProductSerializer, CartSerializer,
                          OrderSerializer,AdressSerializer,  ReviewSerializer, OrderItemSerializer ,UserSerializer)
 from django.contrib.auth.models import User
@@ -26,7 +26,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ModelViewSet , GenericViewSet
 from rest_framework.mixins import CreateModelMixin , RetrieveModelMixin
 from django.views.decorators.csrf import csrf_exempt
-from .serializers import PromotionSerializer,CheckoutSerializer , CartItemSerializer ,  PaymentMethodSerializer,ProfileSerializer, CouponSerializer, ApplyCouponSerializer , AdressSerializer
+from .serializers import PromotionSerializer,CheckoutSerializer , ContactMessageSerializer,CartItemSerializer ,  PaymentMethodSerializer,ProfileSerializer, CouponSerializer, ApplyCouponSerializer , AdressSerializer
 from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSerializer,
@@ -43,6 +43,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.exceptions import MultipleObjectsReturned
 from rest_framework.permissions import AllowAny
 from rest_framework import generics, pagination
+from rest_framework import status
 import stripe
 
 
@@ -674,6 +675,39 @@ class StripeWebhookView(APIView):
             payment.order.save()
         except PaymentMethod.DoesNotExist:
             pass
+
+
+
+class ContactMessageCreateView(generics.CreateAPIView):
+    queryset = ContactMessage.objects.all()
+    serializer_class = ContactMessageSerializer
+
+
+
+    def create(self , request , *args, **kwargs):
+        serializers = self.get_serializer(data=request.data)
+        serializers.is_valid(raise_exception=True)
+        self.perform_create(serializers)
+
+        return Response(
+            {"message": "Votre message a bien été envoyé. Nous vous répondrons dès que possible."},
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+    
+
+
+class ReviewContactMessageView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ContactMessage.objects.all()
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly , IsOwnerOrReadOnly]
+    
+
+    
+
+   
 
 
 

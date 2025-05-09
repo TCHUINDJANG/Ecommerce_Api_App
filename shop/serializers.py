@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Category , Product ,Cart , Profile , CartItem,  PaymentMethod ,Review ,Adress, Order , OrderItem , Wishlist , Coupon , Promotion 
+    Category , Product ,Cart ,ContactMessage, Profile , CartItem,  PaymentMethod ,Review ,Adress, Order , OrderItem , Wishlist , Coupon , Promotion 
 )
 
 from django.contrib.auth import get_user_model
@@ -598,6 +598,12 @@ class CartSerializer(serializers.ModelSerializer):
     def delete (self):
         return None
 
+
+
+class ContactMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactMessage
+        fields = ['id', 'name', 'email', 'subject', 'message', 'created_at']
 
 
 

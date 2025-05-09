@@ -15,6 +15,7 @@ from .models import (
     Promotion,
     PaymentMethod,
     Profile,
+    ContactMessage,
 )
 
 # Configuration des modèles avec personnalisations
@@ -66,6 +67,7 @@ models_to_register = [
     Coupon,
     Promotion,
     PaymentMethod,
+    ContactMessage,
 ]
 
 for model in models_to_register:

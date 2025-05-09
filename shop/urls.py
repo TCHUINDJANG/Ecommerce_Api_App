@@ -5,6 +5,7 @@ from . import views
 from rest_framework.urlpatterns import format_suffix_patterns
 from rest_framework.routers import DefaultRouter
 from .views import ProfileDetailView, ProfileUpdateView
+from .views import ContactMessageCreateView
 from .views import ChangePasswordView
 from .views import  PaymentMethodViewSet 
 from .views import (
@@ -49,6 +50,8 @@ urlpatterns = [
     path("profile/", ProfileDetailView.as_view(), name="profile-detail"),
     path("profile/update/", ProfileUpdateView.as_view(), name="profile-update"),
     path('auth/password/change/', ChangePasswordView.as_view(), name='change-password'),
+    path('api/contact/', ContactMessageCreateView.as_view(), name='contact'),
+    path('api/get-contact/', ContactMessageCreateView.as_view(), name='contact'),
 
 
 
