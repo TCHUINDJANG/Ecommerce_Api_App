@@ -13,7 +13,7 @@ from .models import (
     Wishlist,
     Coupon,
     Promotion,
-    Payment,
+    PaymentMethod,
     Profile,
 )
 
@@ -65,7 +65,7 @@ models_to_register = [
     Wishlist,
     Coupon,
     Promotion,
-    Payment,
+    PaymentMethod,
 ]
 
 for model in models_to_register:

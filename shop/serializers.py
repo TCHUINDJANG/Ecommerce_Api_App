@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Category , Product ,Cart , Profile , CartItem,  Review ,Adress, Order , OrderItem , Wishlist , Coupon , Promotion , Payment
+    Category , Product ,Cart , Profile , CartItem,  PaymentMethod ,Review ,Adress, Order , OrderItem , Wishlist , Coupon , Promotion 
 )
 
 from django.contrib.auth import get_user_model
@@ -8,8 +8,11 @@ from rest_framework.validators import UniqueValidator
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Payment
+from .models import PaymentMethod
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth.password_validation import validate_password
+from django.core import exceptions
+from decimal import Decimal
 
 
 
@@ -31,7 +34,9 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['username', 'email', 'first_name', 'last_name' , 'password']
-        read_only_fields = ['id']
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False}  # non requis en update
+        }
 
 
     def create(self , validated_data):
@@ -46,11 +51,24 @@ class UserSerializer(serializers.ModelSerializer):
         return user
     
 
-# class UserProfileSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model=User
-#         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'date_joined')
-#         read_only_fields = ('id', 'date_joined')
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+
+    def validate(self , data):
+        user = self.context['request'].user
+
+        if not user.check_password(data.get('old_password')):
+            raise serializers.ValidationError({"old_password": "Ancien mot de passe incorrect"})
+        
+        try:
+            validate_password(data.get('new_password') , user)
+        except exceptions.ValidationError as e:
+            raise  serializers.ValidationError({"new_password": list(e.messages)})
+        
+        return data
+    
 
 
 
@@ -61,14 +79,41 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = "__all__"
-        read_only_fields = ["user", "created_at", "updated_at"]
+        
 
 
-class ProfileUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Profile
-        fields = ["phone", "address", "city"  , "country", "postal_code", "birth_date", "profile_picture"]
-        read_only_fields = [ "created_at", "updated_at"]
+    # def validate(self , data):
+    #     required_fileds = ['first_name', 'last_name', 'email']
+    #     for field in required_fileds:
+    #         if not data.get(field):
+    #             raise serializers.ValidationError(
+    #                 {field:"Ce champ est requis pour completer votre profil"}
+    #             )
+    #     return data
+    
+    def update(self , instance , validated_data):
+        user_data = validated_data.pop('user' , {})
+
+        # Mise à jour User (sans toucher au username/password)
+        user = instance.user
+        for attr , value in user_data.items():
+            setattr(user , attr , value)
+        user.save()
+
+
+        # Mise à jour Profile
+        for attr , value in validated_data.items():
+            setattr(instance , attr , value)
+        instance.save()
+
+        return instance
+
+
+# class ProfileUpdateSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Profile
+#         fields = ["phone", "address", "city"  , "country", "postal_code", "birth_date", "profile_picture"]
+#         read_only_fields = [ "created_at", "updated_at"]
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -89,6 +134,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    available = serializers.SerializerMethodField()
     seller = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(
@@ -137,8 +183,12 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Le prix reduit doit etre inferieur au prix normal"
                 )
+            return data
+    
+    def get_available(self , obj):
+        return obj.stock > 0
             
-        return data 
+        
     
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -190,11 +240,7 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
-    product_id = serializers.PrimaryKeyRelatedField(
-        queryset = Product.objects.filter(available=True),
-        source='product',
-        write_only=True
-    )
+    product_id = serializers.IntegerField(write_only=True)
 
 
     class Meta:
@@ -205,33 +251,18 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
         ]
 
-        read_only_fields = ['id' , 'price' , 'total' , 'product', 'quantity']
+        read_only_fields = ['price' , 'total']
 
 
-
-    # class Meta:
-    #     model = Order
-    #     fields = [
-    #         'id' , 'user' , 'transaction_id' ,'status' , 'shipping_adress',
-    #         'billing_adress' , 'tax' , 'total' ,'payment_method' , 'payment_status',
-    #         'notes' , 'transaction_id'
-    #     ]
-
-    #     read_only_fields = [
-    #         'id' , 'user' , 'transaction_id', 'status' , 
-    #         'total' , 'created_at' , 'updated_at'
-    #     ]
-
-
-        def validate_items(self , value):
+    def validate_items(self , value):
             if not value:
                 raise serializers.ValidationError(
                     "Une commande doit contenir au moins un article"
                 )
             return value
 # transction garanti que toutes les operation de la BD s'execute dans une transaction unique
-        @transaction.atomic
-        def create(self , validated_data):
+       
+    def create(self , validated_data):
             item_data = validated_data.pop('items')
             request = self.context.get('request') 
             order = Order.objects.create(user = request.user ,**validated_data )
@@ -272,6 +303,19 @@ class PromotionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+    def create(self , validated_data):
+        # extraire les donnes des categories et des produits
+        products = validated_data.pop('products',[])
+        categories = validated_data.pop('categories' , [])
+
+        promotion = Promotion.objects.create(**validated_data)
+
+        promotion.products.set(products)
+        promotion.categories.set(categories)
+
+        return promotion
+
+
 class CouponSerializer(serializers.ModelSerializer):
     class Meta:
         model = Coupon
@@ -301,13 +345,54 @@ class ApplyCouponSerializer(serializers.Serializer):
         return data
     
 
+class AdressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=Adress
+        fields = ['id', 'street', 'city',  
+            'zip_code', 'country', 'is_default']
 
+        extra_kwargs = {
+            'user': {'read_only': True},
+            'is_default': {'required': False}
+        }
 
+    def validate_is_default(self , value):
+        if value and self.instance:
+            Adress.objects.filter(user=self.instance.user , is_default=True).update(is_default=False)
+
+        return value
+    
+
+class PaymentMethodSerializer(serializers.ModelSerializer):
+    card_number = serializers.CharField(write_only=True)
+    masked_card_number = serializers.SerializerMethodField(read_only=True)
+    details = serializers.JSONField()
+
+    class Meta:
+        model = PaymentMethod
+        fields = ['PAYMENT_METHOD', 'details' , 'masked_card_number' , 'card_number']
+        
+
+    def get_masked_card_number(self, obj):
+        return f"**** **** **** {obj.card_number[-4:]}"
+
+    def validate_card_number(self, value):
+        # Remove all non-digit characters
+        cleaned_value = ''.join(c for c in value if c.isdigit())
+        if len(cleaned_value) not in (15, 16):
+            raise serializers.ValidationError("Card number must be 15 or 16 digits")
+        return cleaned_value
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True)
+    items = OrderItemSerializer(many=True , required=True)   
     user = UserSerializer(read_only=True)
+    transaction_id = serializers.CharField(required=False)
+
+
+    shipping_address = AdressSerializer(required=True)
+    billing_address = AdressSerializer(required=True)
+    payment_method = PaymentMethodSerializer(required=True)
     status = serializers.CharField(read_only=True)
     promotion = PromotionSerializer(read_only=True)
     promotion_id = serializers.PrimaryKeyRelatedField(
@@ -335,68 +420,138 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = '__all__' 
 
 
+    
+    def create(self , validated_data):
+        items_data = validated_data.pop('items')
+        shipping_data = validated_data.pop('shipping_address')
+        billing_data = validated_data.pop('billing_address')
+        payment_data = validated_data.pop('payment_method')
 
 
 
-class AdressSerializer(serializers.ModelSerializer):
-    class Meta:
-        model=Adress
-        fields = ['id' , 'user' , 'city' , 'postal_code' , 'country' , 'is_default']
+        # creation des adresses
 
-        read_only_fields = ['id', 'user']
+        shipping_address = Adress.objects.create(**shipping_data)
+        billing_address = Adress.objects.aaggregate(**billing_data)
 
-    def validate_is_default(self , value):
-        if value and self.instance:
-            Adress.objects.filter(user=self.instance.user , is_default=True).update(is_default=False)
+        order = Order.objects.create(
+            shipping_address = shipping_address,
+            billing_data = billing_address,
+            payment_method = payment_data,
+            **validated_data
 
-        return value
+        )
+
+        # ajout des items
+
+
+        for items_data in items_data:
+            OrderItem.objects.create(order=order , **items_data)
+
+        return order
+
+
+
+
+
+class CheckoutSerializer(serializers.Serializer):
+    shipping_address = AdressSerializer()
+    billing_address_same_as_shipping = serializers.BooleanField()
+    billing_address = AdressSerializer(required=False)
+    payment_method = PaymentMethodSerializer()
+    items = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True
+    )
+
+    def validate(self, data):
+        if not data.get('billing_address_same_as_shipping') and not data.get('billing_address'):
+            raise serializers.ValidationError({
+                'billing_address': 'Billing address is required when not same as shipping'
+            })
+        return data
+
     
 
-class PaymentSerializer(serializers.ModelSerializer):
-    billing_address = AdressSerializer(read_only=True)
-    shipping_address = AdressSerializer(read_only=True)
-    billing_address_id = serializers.PrimaryKeyRelatedField(
-        queryset=Adress.objects.all(),
-        source='billing_address',
-        write_only=True
-    )
-    shipping_address_id = serializers.PrimaryKeyRelatedField(
-        queryset=Adress.objects.all(),
-        source='shipping_address',
-        write_only=True
-    )
-
-    class Meta:
-        model = Payment
-        fields = [
-            'id', 'user', 'stripe_charge_id', 'amount', 'currency', 'status',
-            'created_at', 'billing_address', 'shipping_address',
-            'billing_address_id', 'shipping_address_id'
-        ]
-        read_only_fields = ['id', 'user', 'stripe_charge_id', 'status', 'created_at']
 
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    product = serializers.IntegerField()
-    sub_total = serializers.SerializerMethodField(method_name="total")
+    product = ProductSerializer
+    unit_price = serializers.DecimalField(
+        source='price',
+        max_digits=10, 
+        decimal_places=2,
+        read_only=True
+    )
+    total_price = serializers.SerializerMethodField()
    
     class Meta:
         model = CartItem
-        fields = [ 'product' , 'quantity' , 'sub_total']
+        fields = [ 'id' , 'product' , 'unit_price', 'quantity' , 'total_price']
 
 
-    def total(self, cartItems: CartItem):
-        return cartItems.quantity * cartItems.product.price
+    def get_total_price(self, obj):
+        return obj.total_price
+    
 
 
+class CartSummarySerializer(serializers.Serializer):
+    items_count = serializers.IntegerField()
+    products_count = serializers.IntegerField()
+    subtotal = serializers.DecimalField(max_digits=12, decimal_places=2)
+    shipping_cost = serializers.DecimalField(max_digits=6, decimal_places=2)
+    tax_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    discounts = serializers.DictField()
+    eligible_for_free_shipping = serializers.BooleanField()
 
+    
 
 class CartSerializer(serializers.ModelSerializer):
-    items = CartItemSerializer(many=True , write_only=True)
+    items = CartItemSerializer(many=True, read_only=True)
+    total_price = serializers.SerializerMethodField()
+    summary = serializers.SerializerMethodField()
+    _links = serializers.SerializerMethodField
+
+    items_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=CartItem.objects.all(),
+        source='cartItems',
+        write_only=True,
+        required=False
+    )
+
+    products_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Product.objects.all(),
+        source='products',
+        write_only=True,
+        required=False
+    )
+    
     class Meta:
         model = Cart
-        fields = ['id' , 'created' , 'items']
+        fields = ['id' , 'user', 'created'  ,'summary', 'total_price'  , 'items' , 'products_ids' , 'items_ids']
+
+        extra_kwargs = {
+            '_links': {'read_only': True},
+            'summary': {'read_only': True},
+            'items': {'read_only': True}
+        }
+
+
+    def get_total_price(self , obj):
+        return obj.total_price
+    
+
+    def get_links(self, obj):
+        request = self.context.get('request')
+        return {
+            'self': request.build_absolute_uri(),
+            'checkout': request.build_absolute_uri('/api/checkout/'),
+            'continue_shopping': request.build_absolute_uri('/api/products/')
+        }
 
 
     def create(self , validated_data):
@@ -415,6 +570,33 @@ class CartSerializer(serializers.ModelSerializer):
                 })
         
         return cart
+    
+
+    def get_summary(self, obj):
+        items = obj.items.all()
+        subtotal = sum(item.quantity * item.product.price for item in items)
+        
+        return {
+            'items_count': sum(item.quantity for item in items),
+            'products_count': items.count(),
+            'subtotal': subtotal,
+            'eligible_for_free_shipping': subtotal > 100  # Exemple: gratuit à partir de 100€
+        }
+    
+
+    # def _calculate_shipping(self, panier):
+    #     """Méthode protégée pour calculer les frais de livraison"""
+    #     # Exemple de logique - à remplacer par votre calcul réel
+    #     if panier.poids_total > 10:
+    #         return Decimal('15.00')
+    #     return Decimal('5.00')
+    
+    
+    def update(self , validated_data):
+        return None
+    
+    def delete (self):
+        return None
 
 
 

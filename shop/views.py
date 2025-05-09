@@ -1,17 +1,19 @@
 from rest_framework import generics, permissions, status , filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import stripe.error
 from .models import Category, Product, Order, OrderItem, Review , Adress , Cart , CartItem
 from .serializers import (CategorySerializer, ProductSerializer, CartSerializer,
-                         OrderSerializer,AdressSerializer, ProfileUpdateSerializer , ReviewSerializer, OrderItemSerializer ,UserSerializer)
+                         OrderSerializer,AdressSerializer,  ReviewSerializer, OrderItemSerializer ,UserSerializer)
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from .permissions import IsOwnerOrReadOnly   , IsProductOwner
 from django.utils import timezone
+from django.http import HttpResponse
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Promotion, Payment, Coupon , Profile
+from .models import Promotion,  Coupon , Profile ,PaymentMethod
 from rest_framework import viewsets
 from rest_framework.decorators import action
 # import stripe
@@ -19,10 +21,12 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework import serializers
 from django.conf import settings
 from .filters import ProductFilter
+from django.db import transaction
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ModelViewSet , GenericViewSet
 from rest_framework.mixins import CreateModelMixin , RetrieveModelMixin
-from .serializers import PromotionSerializer, PaymentSerializer,ProfileSerializer, CouponSerializer, ApplyCouponSerializer , AdressSerializer
+from django.views.decorators.csrf import csrf_exempt
+from .serializers import PromotionSerializer,CheckoutSerializer , CartItemSerializer ,  PaymentMethodSerializer,ProfileSerializer, CouponSerializer, ApplyCouponSerializer , AdressSerializer
 from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSerializer,
@@ -33,9 +37,22 @@ from rest_framework.exceptions import NotAuthenticated
 from django.contrib.auth import get_user_model
 from django.http import Http404
 from .permissions import IsCartOwner
+from rest_framework.permissions import IsAuthenticated
+from .serializers import ChangePasswordSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.core.exceptions import MultipleObjectsReturned
+from rest_framework.permissions import AllowAny
+from rest_framework import generics, pagination
+import stripe
 
 
 User = get_user_model()
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+
+
 
 
 
@@ -48,11 +65,6 @@ class UserRegisterView(generics.CreateAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
 
-
-# class UserProfileView(generics.RetrieveUpdateDestroyAPIView):
-#     serializer_class = UserProfileSerializer
-    # permission_classes = [permissions.IsAuthenticated]
-    
 
 
 class ProfileDetailView(generics.RetrieveAPIView):
@@ -70,11 +82,37 @@ class ProfileDetailView(generics.RetrieveAPIView):
 
 class ProfileUpdateView(generics.UpdateAPIView):
     queryset = Profile.objects.all()
-    serializer_class = ProfileUpdateSerializer
+    serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return self.request.user.profile
+    
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializers = ChangePasswordSerializer(data=request.data, context={'request': request})
+        
+        if serializers.is_valid():
+            user = request.user
+            new_password = serializers.validated_data['new_password']
+            user.set_password(new_password)
+            user.save()
+
+        # Invalider tous les tokens JWT existants
+            RefreshToken.for_user(user)
+
+
+            return Response({
+            "status":"success",
+            "message": "Mot de passe changé avec succès. Tous vos tokens ont été invalidés." },status=status.HTTP_200_OK)
+    
+
+        return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
+
     
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -100,13 +138,9 @@ class UserDetail(generics.RetrieveAPIView):
 class CategoryList(generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [filters.SearchFilter]    
     search_fields = ['name']
     # permission_classes = [permissions.IsAuthenticated]
-
-
-
-
 
 class CategoryDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
@@ -115,6 +149,7 @@ class CategoryDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAdminUser]
 
 class ProductList(generics.ListCreateAPIView):
+    permission_classes = [AllowAny]
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend , filters.SearchFilter , filters.OrderingFilter]
@@ -123,7 +158,19 @@ class ProductList(generics.ListCreateAPIView):
     search_fields = ['name' , 'description']
     ordering_fields = ['price' , 'created_at']
     pagination_class = PageNumberPagination
-    # permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated , IsProductOwner]
+
+
+
+    def get(self, request, *args, **kwargs):
+    # Laissez la parent class gérer la pagination et les filtres
+         return super().get(request, *args, **kwargs)
+
+
+    # def get(self ,request):
+    #     products = Product.objects.all()
+    #     serializer = ProductSerializer(products , many=True)
+    #     return Response(serializer.data)
 
    
 
@@ -154,27 +201,74 @@ class OrderListCreate(generics.ListCreateAPIView):
         serializer.save(user=self.request.user)
 
 
-class CartViewSet(generics.ListCreateAPIView):
-    queryset = Cart.objects.all()
+class CartDetailView(generics.RetrieveAPIView):
     serializer_class = CartSerializer
-    permission_classes = [permissions.IsAuthenticated , IsCartOwner]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 
-class CartCreateView(APIView):
-    def post(self, request):
-        if 'items' not in request.data:
-            return Response(
-                {"error": "La clé 'items' est requise"},
-                status=status.HTTP_400_BAD_REQUEST
+    def get_queryset(self):
+        return Cart.objects.filter(user=self.request.user).prefetch_related(
+            'items__product'
+        )
+
+    def get_object(self):
+        try:
+            # Essayez de récupérer le panier existant
+            return Cart.objects.get(user=self.request.user)
+        except Cart.DoesNotExist:
+            return Cart.objects.create(user=self.request.user)
+        except MultipleObjectsReturned:
+            # Gestion des doublons : récupère le plus récent
+            carts = Cart.objects.filter(user=self.request.user).order_by('-created')
+            # Garde le plus récent et supprime les doublons
+            main_cart = carts.first()
+            carts.exclude(id=main_cart.id).delete()
+            return main_cart
+
+
+
+class AddToCardView(generics.CreateAPIView):
+    serializer_class = CartItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+    def create(self , request , *args, **kwargs):
+        product_id = request.data.get('product_id')
+        quantity = request.data.get('quantity', 1)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response (
+                {
+                    'error':'Product not found'
+                },
+                status= status.HTTP_404_NOT_FOUND
             )
-            
-        serializer = CartSerializer(data=request.data)
-        if serializer.is_valid():
-            cart = serializer.save()
-            return Response(CartSerializer(cart).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        cart, _ = Cart.objects.get_or_create(user=request.user)
+        cart_item , created = CartItem.objects.get_or_create(
+            cart = cart , 
+            product=product,
+            defaults={'quantity': quantity}
+        )
 
+        if not created:
+            cart_item.quantity+= int(quantity)
+            cart_item.save()
+
+        serializer = self.get_serializer(cart_item)
+        return Response(serializer.data , status=status.HTTP_201_CREATED)
+    
+
+class UpdateCartItemView(generics.UpdateAPIView, generics.DestroyAPIView):
+    serializer_class = CartItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        return CartItem.objects.filter(cart__user=self.request.user)
 
    
         
@@ -196,10 +290,19 @@ class OrderDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated , IsOwnerOrReadOnly]
 
-    def get_queryset(self):
+    def get_queryset(self):  
         if self.request.user.is_staff:
             return Order.objects.all()
         return Order.objects.filter(user=self.request.user)
+    
+
+class OrderListView(generics.ListAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+    def get_queryset(self):
+        return Order.objects.filter(user= self.request.user)
     
 
 class OrderItemList(generics.ListCreateAPIView):
@@ -253,7 +356,7 @@ class ReviewList(generics.ListCreateAPIView):
             raise serializers.ValidationError({"product": "Produit introuvable"})
         
         serializer.save(
-            user = self.request.user,
+            customer = self.request.user,
             product=product
         )
         
@@ -300,7 +403,7 @@ class PromotionDetail(generics.RetrieveUpdateDestroyAPIView):
     # permission_classes = [permissions.IsAdminUser]
 
 class PaymentList(generics.ListCreateAPIView):
-    serializer_class = PaymentSerializer
+    serializer_class = PaymentMethodSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -324,7 +427,7 @@ class PaymentList(generics.ListCreateAPIView):
         order.save()
 
 class PaymentDetail(generics.RetrieveAPIView):
-    serializer_class = PaymentSerializer
+    serializer_class = PaymentMethodSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -388,64 +491,193 @@ class AdressViewSet(viewsets.ModelViewSet):
             Adress.objects.filter(user=self.request.user ,is_default=True).update(is_default=False)
         serializer.save(user=self.request.user)
 
-
-class PayementViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.all()
-    serializer_class = PaymentSerializer
+class PaymentMethodViewSet(viewsets.ModelViewSet):
+    serializer_class = PaymentMethodSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_query(self):
-        return Payment.objects.filter(user=self.request.user)
+
+    def get_queryset(self):
+        return PaymentMethod.objects.filter(user=self.request.user)
     
-    @action(detail=False, methods=['post'])
-    def create_payement_intent(self, request):
-        try:
-            amount = int(float(request.data.get('amount'))  * 100)  # Convertir en cents
-            currency = request.data.get('currency' , 'usd')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
-        #verifier les adress
-            billing_address_id = request.data.get('billing_address_id')
-            shipping_address_id = request.data.get('shipping_address_id')
+
+    @action(detail=True, methods=['post'])
+    def set_default(self, request, pk=None):
+        payment_method = self.get_object()
+        PaymentMethod.objects.filter(user=request.user).update(is_default=False)
+        payment_method.is_default = True
+        payment_method.save()
+        return Response({'status': 'default payment method set'})
+    
 
 
-            if not shipping_address_id or not shipping_address_id:
-                return Response (
-                    {'errotr': 'Billing and shipping addresses are required'},
-                    status = status.HTTP_400_BAD_REQUEST
-                )
-            
-            try:
-                billing_address = Adress.objects.get(id=billing_address_id , user=request.user)
-                shipping_address = Adress.objects.get(id=shipping_address_id , user=request.user)
+class CheckoutView(generics.CreateAPIView):
+    serializer_class = CheckoutSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-            except Adress.DoesNotExist:
+
+    @transaction.atomic
+    def create(self , request , *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+            # verifier que le panier n'est pas vide
+
+        cart = Cart.objects.get(user=request.user)
+        if not cart.items.exits():
+            return Response(
+                {'error':'Your Cart is empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # Vérifier le stock avant de créer la commande
+        for item in cart.items.all():
+            if item.product.stock < item.quantity:
                 return Response(
-                    {'error':'Invalid adress ID'},
+                    {'error': f'Not enough stock for {item.product.name}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+        # Créer la commande
+        order = Order.objects.create(
+            user = request.user,
+            shipping_address=serializer.validated_data['shipping_address'],
+            billing_address=serializer.validated_data.get('billing_address'),
+            total_price=cart.total_price
+        )
 
-                #creer un payement avec stripe
-            # intent = stripe.PaymentItent.create(
-            #         amount = amount,
-            #         currency = currency,
-            #         metadata = {
-            #             'user_id': request.user.id,
-            #             'billing_address_id': billing_address_id,
-            #             'shipping_address_id': shipping_address_id
-            #         }
-            #     )
-            return Response({
-                # 'clientSecret': intent.client_secret,
-                'publishableKey': settings.STRIPE_PUBLISHABLE_KEY
-            })
-        except Exception as e:
-            return Response (
-                    {'error': str(e)},
-                    status=status.HTTP_400_BAD_REQUEST
+        # Créer les OrderItems et mettre à jour le stock
+        for cart_item in cart_item.all():
+            OrderItem.objects.create(
+                order = order,
+                product=cart_item.product,
+                quantity=cart_item.quantity,
+                price=cart_item.product.price
+            )
+
+        # Mettre à jour le stock
+        cart_item.product.stock -= cart_item.quantity
+        cart_item.product.save()
+
+        # Vider le panier
+        cart.items.all().delete()
+
+        # Retourner la commande créée
+        order_serializer = OrderSerializer(order)
+        return Response(order_serializer.data , status=status.HTTP_201_CREATED)
+    
+
+
+# accepter le paiment avec stripe
+
+class PaymentProcessView(APIView):
+    def post(self, request):
+        order_id = request.data.get('order_id')
+        token = request.data.get('token')   #token stripe pour le frontend
+        try:
+            order = Order.objects.get(id=order_id , user=request.user)
+
+
+            # Créer un paiement Stripe
+            charge = stripe.Charge.create(
+                amount = int(order.total * 100),  # stripe utilise les centemes
+                currency="usd",
+                source=token,
+                description=f"Paiment pour la commande {order.transaction_id}",
+            )
+
+            # Sauvegarder le paiement en base
+            payment = PaymentMethod.objects.create(
+                order=order,
+                transaction_id = charge.id,
+                amount = order.total,
+                currency="usd",
+                status="succeeded" if charge.paid else "failed",
+                payment_method = "stripe"
+            )
+
+            return Response(
+                {"status":"success" , "transaction_id":payment.transaction_id},
+                status=status.HTTP_201_CREATED,
+            )
+        except Order.DoesNotExist:
+            return Response(
+                {"error":"Commande introuvable"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except stripe.error.StripeError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         
+
+
+
+# Endpoint de Confirmation de paiement (GET
+class PaymentStatusView(APIView):
+    def get(self , request, payment_id):
+        try:
+            payment = PaymentMethod.objects.get(payment_id=payment_id)
+            return Response(
+                {
+                    "payment_id":payment.transaction_id,
+                    "status":payment.status,
+                    "amount":payment.amount,
+                    "order_id":payment.order
+                },
+                status = status.HTTP_200_OK
+            )
+        except PaymentMethod.DoesNotExist:
+            return Response(
+                {"error": "Paiement introuvable"}, 
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+
+
+# pour confirmer les paiements de manière asynchrone.
+class StripeWebhookView(APIView):
+    @csrf_exempt
+    def post(self, request):
+        payload = request.body
+        sig_header = request.META["HTTP_STRIPE_SIGNATURE"]
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            )
+        except ValueError as e:
+            return HttpResponse(status=400)  # Requête invalide
+        except stripe.error.SignatureVerificationError as e:
+            return HttpResponse(status=400)  # Signature invalide
+
+        # Gérer les événements Stripe
+        if event["type"] == "payment_intent.succeeded":
+            payment_intent = event["data"]["object"]
+            self.handle_payment_succeeded(payment_intent)
+        
+        return HttpResponse(status=200)
+    
+
+    def handle_payment_succeeded(self , payment_intent):
+        payment_id = payment_intent['id']
+        try:
+            payment = PaymentMethod.objects.get(payment_id=payment_id)
+            payment.status = "succeeded",
+            payment.save()
+
+            #mettre a jour la commande comme paye
+            payment.order.status = "paid"
+            payment.order.save()
+        except PaymentMethod.DoesNotExist:
+            pass
+
+
+
+
 
 
 

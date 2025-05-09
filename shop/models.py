@@ -10,12 +10,6 @@ import uuid
 
 User = get_user_model()
 
-
-# class User (AbstractBaseUser):
-#     is_custommer = models.BooleanField(default=False)
-#     is_seller = models.BooleanField(default=False)
-
-
 class TimestampModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True)
@@ -23,6 +17,20 @@ class TimestampModel(models.Model):
     class Meta:
         abstract = True
 
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    phone = models.CharField(max_length=20, blank=True, null=True , default='Non renseigné')
+    address = models.TextField(blank=True, null=True , default='Non renseigné')
+    city = models.CharField(max_length=100, blank=True, null=True , default='Non renseigné')
+    country = models.CharField(max_length=100, blank=True, null=True , default='Non renseigné')
+    postal_code = models.CharField(max_length=20, blank=True, null=True , default='Non renseigné')
+    birth_date = models.DateField(blank=True, null=True , default='Non renseigné')
+    profile_picture = models.ImageField(upload_to="profile_pics/", blank=True, null=True , default='Non renseigné')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Profile de {self.user.username}"
 
 # permet de classer les produits par categorie
 class Category(TimestampModel):
@@ -31,7 +39,6 @@ class Category(TimestampModel):
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to='categories/' , blank=True)
     is_active = models.BooleanField(default=True)
-
 
 
     class Meta:
@@ -70,12 +77,6 @@ class Product(TimestampModel):
     def current_price(self):
         return self.discount_price if self.discount_price else self.price
     
-    # @property
-    # def review_count(self):
-    #     return self.review_count()
-    
-
-
 
 class Promotion(models.Model):
     name = models.CharField(max_length=100)
@@ -108,6 +109,76 @@ class Coupon(models.Model):
 
     def __str__(self):
         return self.code
+
+class Adress (models.Model):
+    user = models.ForeignKey(User , on_delete=models.CASCADE , related_name='adress')
+    street = models.CharField(max_length=255 , null=True , blank=True)
+    zip_code = models.CharField(max_length=20 , null=True , blank=True)
+    city = models.CharField(max_length=100)
+    postal_code = models.CharField(max_length=100)
+    country = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_default = models.BooleanField(default=False)
+
+
+    def __str__(self):
+        return f"{self.street}, {self.city}, {self.country}"
+    
+    class Meta:
+        verbose_name_plural = "Addresses"
+        ordering = ['-is_default', '-created_at']
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user'],
+                name='unique_user_cart'
+            )
+        ]
+
+
+class Cart(models.Model):
+    id = models.UUIDField(default=uuid.uuid4,  editable=False , primary_key=True)
+    created =models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User , related_name='cart' , on_delete=models.SET_NULL , null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+    def __str__(self):
+        return f"Cart of {self.user.username}"
+    
+
+    @property
+    def total_price(self):
+        return sum(item.total_price for item in self.items.all())
+    
+    def get_summary(self):
+        return {
+            'items_count':self.cart_items.count(),
+            'products_count': self.cart_items.distinct('product').count(),
+            'subtotal': self.subtotal,
+        }
+    
+
+class CartItem(models.Model):
+    cart = models.ForeignKey(Cart ,  related_name='items' , on_delete=models.CASCADE , blank=True , null=True)
+    product = models.ForeignKey(Product , on_delete=models.CASCADE , blank=True , null=True, related_name='cartitems')
+    quantity = models.IntegerField(default=1)
+    price = models.DecimalField(max_digits=10, decimal_places=2 , null=True , blank=True)  # Ajoutez ce champ
+
+    @property
+    def total_price(self):
+        return self.product.price * self.quantity
+    
+    @property
+    def unit_price(self):
+        return self.price
+    
+    
+    def __str__(self):
+        return f"{self.quantity} x {self.product.name} in {self.cart}"
+    
+    
     
 
 
@@ -122,11 +193,34 @@ class Order(TimestampModel):
     ]
     user = models.ForeignKey(User , related_name='oders' , on_delete=models.SET_NULL , null=True)
     status = models.CharField(max_length=20 , choices=STATUS_CHOICES , default='pending')
-    shipping_adress = models.CharField(max_length=20 , null=True , blank=True)
-    billing_adress = models.CharField(blank=True , null=True)
+    shipping_address = models.ForeignKey(
+        Adress,
+        on_delete=models.SET_NULL,
+        related_name='shipping_orders',
+        null=True,  # Ajoutez ceci pour permettre les valeurs nulles
+        blank=True
+    )
+
+    billing_address = models.ForeignKey(
+        Adress,
+        on_delete=models.PROTECT,
+        related_name='billing_orders',
+        null=True,  # Ajoutez ceci pour permettre les valeurs nulles
+        blank=True
+    )
+
+    payment_method = models.ForeignKey(
+        'PaymentMethod',
+        on_delete=models.SET_NULL,
+        related_name='orders',
+        null=True,  # Rend le champ optionnel
+        blank=True
+    )
+
+
+   
     tax = models.DecimalField(max_digits=10 , decimal_places=2 , default=0)
     total = models.DecimalField(max_digits=10 , decimal_places=2 , default=0)
-    payment_method = models.CharField(max_length=50)
     payment_status = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     transaction_id = models.CharField(max_length=100 , unique=True)
@@ -177,13 +271,13 @@ class Order(TimestampModel):
 
     @property
     def update_total(self):
-        return sum(item.price for item in self.item.all())
+        return sum(item.price for item in self.items.all())
 
     def __str__(self):
         return f"Order {self.id} by {self.user.username}"
 
 
-    
+
 # Suivre les commande des clients
 
 # cette table donne les information sur les produit comandes tel que la quantite le pric
@@ -204,13 +298,54 @@ class OrderItem(models.Model):
     def __str__(self):
         return f"{self.quantity} * {self.product.name}"
     
+
+
+
+class PaymentMethod(models.Model):
+    PAYMENT_STATUS = (
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('refunded', 'Refunded'),
+    )
+   
+    PAYMENT_METHOD = (
+        ('credit_card', 'Credit Card'),
+        ('paypal', 'PayPal'),
+        ('bank_transfer', 'Bank Transfer'),
+    )
+   
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_id = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    currency = models.CharField(max_length=3, default='usd')
+    billing_address = models.ForeignKey(Adress, on_delete=models.SET_NULL, null=True, related_name='billing_payments')
+    shipping_address = models.ForeignKey(Adress, on_delete=models.SET_NULL, null=True, related_name='shipping_payments')
+
+    def __str__(self):
+        return f"Payment {self.transaction_id} - {self.amount} {self.currency}"
+    
+
+    class Meta:
+        ordering = ['-created_at']
+
+ 
+
+
+
+    
+
+    
 # liste les souhaits pour un utilisateus
 class Wishlist(models.Model):
      user = models.ForeignKey(User , related_name='wishlist' , on_delete=models.SET_NULL , null=True)
      products = models.ManyToManyField(Product , related_name='wishlisted_by')
 
      def __str__(self):
-         return f"Wishlist of {self.user.usernames}"
+         return f"Wishlist of {self.user.username}"
 
 
 
@@ -228,102 +363,16 @@ class Review(TimestampModel):
 
 
         def __str__(self):
-            return f"{self.user.username} - {self.product.name} - {self.rating}"
+            return f"{self.customer.username} - {self.product.name} - {self.rating}"
         
 
-
-
-
-class Adress (models.Model):
-    user = models.ForeignKey(User , on_delete=models.CASCADE , related_name='adress')
-    city = models.CharField(max_length=100)
-    postal_code = models.CharField(max_length=100)
-    country = models.CharField(max_length=100)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    is_default = models.BooleanField(default=False)
-
-
-    def __str__(self):
-        return f"{self.city} , {self.country}"
-    
-    class Meta:
-        verbose_name_plural = "Addresses"
-        ordering = ['-is_default', '-created_at']
-
-
-        
     
 
-class Payment(models.Model):
-    PAYMENT_STATUS = (
-        ('pending', 'Pending'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-        ('refunded', 'Refunded'),
-    )
-   
-    PAYMENT_METHOD = (
-        ('credit_card', 'Credit Card'),
-        ('paypal', 'PayPal'),
-        ('bank_transfer', 'Bank Transfer'),
-    )
-   
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment')
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD)
-    transaction_id = models.CharField(max_length=100, blank=True)
-    status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    currency = models.CharField(max_length=3, default='usd')
-    billing_address = models.ForeignKey(Adress, on_delete=models.SET_NULL, null=True, related_name='billing_payments')
-    shipping_address = models.ForeignKey(Adress, on_delete=models.SET_NULL, null=True, related_name='shipping_payments')
-
-    def __str__(self):
-        return f"Payment {self.stripe_charge_id} - {self.amount} {self.currency}"
-    
-
-    class Meta:
-        ordering = ['-created_at']
 
 
 
 
 
-
-class Cart(models.Model):
-    id = models.UUIDField(default=uuid.uuid4,  editable=False , primary_key=True)
-    created =models.DateTimeField(auto_now_add=True)
-
-
-    def __str__(self):
-        return str(self.id)
-    
-
-class CartItem(models.Model):
-    cart = models.ForeignKey(Cart ,  related_name='items' , on_delete=models.CASCADE , blank=True , null=True)
-    product = models.ForeignKey(Product , on_delete=models.CASCADE , blank=True , null=True, related_name='cartitems')
-    quantity = models.IntegerField(default=1)
-
-
-
-
-class Profile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    phone = models.CharField(max_length=20, blank=True, null=True)
-    address = models.TextField(blank=True, null=True)
-    city = models.CharField(max_length=100, blank=True, null=True)
-    country = models.CharField(max_length=100, blank=True, null=True)
-    postal_code = models.CharField(max_length=20, blank=True, null=True)
-    birth_date = models.DateField(blank=True, null=True)
-    profile_picture = models.ImageField(upload_to="profile_pics/", blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Profile de {self.user.username}"
-    
 
 
  

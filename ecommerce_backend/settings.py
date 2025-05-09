@@ -66,7 +66,11 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+
 ]
+
+ # autoriser les requettes depuis le domaine vercel
+# "https://votre-frontend-vercel.vercel.app",
 
 #configuration DRF
 
@@ -76,7 +80,7 @@ REST_FRAMEWORK = {
     ],
 
     'DEFAULT_PERMISSION_CLASSES' : [
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly'
+        # 'rest_framework.permissions.IsAuthenticatedOrReadOnly'
         # 'rest_framework.permissions.IsAuthenticated',
     ],
 
@@ -87,7 +91,7 @@ REST_FRAMEWORK = {
     ],
 
     'DEFAULT_PAGINATION_CLASS' : 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 5,
+    'PAGE_SIZE': 6,
 
      "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 
@@ -148,6 +152,15 @@ DATABASES = {
     }
 }
 
+# paiment avec stripe
+
+STRIPE_SECRET_KEY = "sk_test_..."
+STRIPE_PUBLISHABLE_KEY = "pk_test_..."
+STRIPE_WEBHOOK_SECRET = "whsec_..."  # Pour vérifier les webhooks
+
+
+
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -193,6 +206,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #config medias
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR , 'media')
+
+# si vous utilisez des cookies ou les JWT
+
+# CORS_ALLOW_CREDENTIALS = True
 
 
 
