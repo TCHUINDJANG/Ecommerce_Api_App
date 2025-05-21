@@ -27,6 +27,12 @@ SECRET_KEY = 'django-insecure-1wftl($p^3yi^%_v@qwu@%=twptf&=#pd=_z9odjn1twe&e8*y
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# DEBUG = False :  ceci pour render
+# ALLOWED_HOSTS = ['*']  # Ou votre domaine Render
+# CORS_ALLOWED_ORIGINS = [
+#     "https://votre-frontend.vercel.app",
+# ]
+
 ALLOWED_HOSTS = []
 
 
@@ -60,7 +66,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+
+    # pour les fichier statisitiques
+    # 'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
+#  pour render pour les fichiers statistiques
+# STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 #configuration CORS
 CORS_ALLOW_ALL_ORIGINS = True
