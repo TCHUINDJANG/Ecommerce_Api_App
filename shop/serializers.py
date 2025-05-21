@@ -39,6 +39,18 @@ class UserSerializer(serializers.ModelSerializer):
         }
 
 
+    def validate_username(self , value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Ce nom d'utilisateur est deja pris")
+        return value
+    
+    
+    def validate_email(self, value):
+        if value and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Cet email est déjà utilisé.")
+        return value
+
+
     def create(self , validated_data):
         user = User.objects.create_user(
             username = validated_data['username'],
@@ -80,16 +92,6 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = Profile
         fields = "__all__"
         
-
-
-    # def validate(self , data):
-    #     required_fileds = ['first_name', 'last_name', 'email']
-    #     for field in required_fileds:
-    #         if not data.get(field):
-    #             raise serializers.ValidationError(
-    #                 {field:"Ce champ est requis pour completer votre profil"}
-    #             )
-    #     return data
     
     def update(self , instance , validated_data):
         user_data = validated_data.pop('user' , {})
@@ -97,6 +99,8 @@ class ProfileSerializer(serializers.ModelSerializer):
         # Mise à jour User (sans toucher au username/password)
         user = instance.user
         for attr , value in user_data.items():
+
+
             setattr(user , attr , value)
         user.save()
 
@@ -121,6 +125,7 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = '__all__'
         read_only_fields = ['id' , 'slug']
+
         extra_kwargs = {
             'name': {
                 'validators' : [
@@ -470,10 +475,6 @@ class CheckoutSerializer(serializers.Serializer):
                 'billing_address': 'Billing address is required when not same as shipping'
             })
         return data
-
-    
-
-
 
 
 class CartItemSerializer(serializers.ModelSerializer):
